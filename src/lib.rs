@@ -203,13 +203,14 @@ pub fn experiment(args: TokenStream, input: TokenStream) -> TokenStream {
 
             let name = format!("{}", ident);
             let desc = format!("{}", desc.value());
+            let span = ty.span();
             global_matcher = if optional {
-                quote!{
+                quote_spanned!{span=>
                     #global_matcher
                     global_match_states.#ident = Some(args.value_of(#name).map(|x| x.parse::< #quote_ty >().expect("Failed to parse value. Double check!")));
                 }
             } else {
-                quote!{
+                quote_spanned!{span=>
                     #global_matcher
                     global_match_states.#ident = Some(args.value_of(#name).map(|x| x.parse::< #quote_ty >().expect("Failed to parse value. Double check!")).unwrap());
                 }
