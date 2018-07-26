@@ -82,6 +82,9 @@ fn name_from_type_path(ty: &Type) -> String {
                     format!("{}::{}", acc, ps.ident)
                 }
             }),
+        Type::Reference(tr) => {
+            name_from_type_path(&tr.elem)
+        },
         _ => unimplemented!()
     }
 }
@@ -99,6 +102,54 @@ fn extract_about(attrs: &Vec<Attribute>) -> String {
                 format!("{}\n{}", acc, x.desc.value())
             }
         })
+}
+
+fn extract_inner_type(ty: &Type) -> proc_macro2::TokenStream {
+    let mut quote_ty = quote!(#ty);
+    match *ty {
+        Type::Path(ref p) => {
+            let last_segment = p.path.segments.last().unwrap();
+            let last_segment_value = last_segment.value();
+            if name_from_type_path(&ty) == "Option" {
+                if let PathArguments::AngleBracketed(ref a) = last_segment_value.arguments {
+                    if let syn::GenericArgument::Type(t) = a.args.first().unwrap().value() {
+                        let inner_type = extract_inner_type(&t);
+                        quote_ty = quote!(#inner_type);
+                    }
+                } else {
+                    ty.span().unstable().error("Type not supported by thunder").emit();
+                }
+            }
+        },
+        Type::Reference(ref tr) => {
+            if tr.mutability.is_some() {
+                ty.span()
+                    .unstable()
+                    .error("Thunder does not support mutable arguments")
+                    .emit()
+            }
+
+            if tr.lifetime.is_some() {
+                ty.span()
+                    .unstable()
+                    .error("Thunder does not support lifetime on arguments")
+                    .emit()
+            }
+
+            let inner = extract_inner_type(&tr.elem);
+            quote_ty = quote! {
+                &#inner
+            };
+        },
+        _ => {
+            ty.span()
+                .unstable()
+                .error("Type not supported by thunder")
+                .emit();
+        }
+    }
+
+    return quote_ty;
 }
 
 #[proc_macro_attribute]
@@ -126,24 +177,8 @@ pub fn experiment(args: TokenStream, input: TokenStream) -> TokenStream {
         .inner
         .into_iter()
         .for_each(|GlobalFlag { ident, colon_token, ty, colon_token2, desc }| {
-            let mut quote_ty = quote!(#ty);
+            let quote_ty = extract_inner_type(&ty);
             let optional = name_from_type_path(&ty) == "Option";
-            if let Type::Path(ref p) = *ty {
-                let last_segment = p.path.segments.last().unwrap();
-                let last_segment_value = last_segment.value();
-                if optional {
-                    if let PathArguments::AngleBracketed(ref a) = last_segment_value.arguments {
-                        if let syn::GenericArgument::Type(t) = a.args.first().unwrap().value() {
-                            let inner_type = proc_macro2::Ident::new(&name_from_type_path(t), proc_macro2::Span::call_site());
-                            quote_ty = quote!(#inner_type);
-                        }
-                    } else {
-                        ty.span().unstable().error("Type not supported by thunder").emit();
-                    }
-                }
-            } else {
-                ty.span().unstable().error("Type not supported by thunder").emit();
-            };
 
             accessors = quote! {
                 #accessors
