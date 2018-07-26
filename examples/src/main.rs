@@ -9,7 +9,9 @@ struct MyTest;
 #[experiment(flag1: Option<String>: "Dessa forma")]
 /// A CLI to test refactoring experiments for crate Thunder
 impl MyTest {
-
+    fn hello(name: &str) {
+        println!("Hello, {}!", name);
+    }
 }
 
 fn main() {

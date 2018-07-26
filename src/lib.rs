@@ -10,7 +10,7 @@ extern crate proc_macro2;
 use proc_macro::TokenStream;
 use syn::synom::Synom;
 use syn::spanned::Spanned;
-use syn::{ Ident, Type, LitStr, PathArguments, Attribute };
+use syn::{ Ident, Type, LitStr, PathArguments, Attribute, ImplItem, ItemImpl };
 use syn::punctuated::Punctuated;
 
 struct GlobalFlag {
@@ -103,7 +103,7 @@ fn extract_about(attrs: &Vec<Attribute>) -> String {
 
 #[proc_macro_attribute]
 pub fn experiment(args: TokenStream, input: TokenStream) -> TokenStream {
-    let item_impl: syn::ItemImpl = syn::parse(input).expect("Failed to parse input for experiment macro");
+    let item_impl: ItemImpl = syn::parse(input).expect("Failed to parse input for experiment macro");
     let global_flags: GlobalFlags = syn::parse(args).expect("Failed to parse global flags");
 
     let impl_name = &item_impl.self_ty;
@@ -127,11 +127,10 @@ pub fn experiment(args: TokenStream, input: TokenStream) -> TokenStream {
         .into_iter()
         .for_each(|GlobalFlag { ident, colon_token, ty, colon_token2, desc }| {
             let mut quote_ty = quote!(#ty);
-            let mut optional = false;
+            let optional = name_from_type_path(&ty) == "Option";
             if let Type::Path(ref p) = *ty {
                 let last_segment = p.path.segments.last().unwrap();
                 let last_segment_value = last_segment.value();
-                optional = name_from_type_path(&ty) == "Option";
                 if optional {
                     if let PathArguments::AngleBracketed(ref a) = last_segment_value.arguments {
                         if let syn::GenericArgument::Type(t) = a.args.first().unwrap().value() {
@@ -194,6 +193,23 @@ pub fn experiment(args: TokenStream, input: TokenStream) -> TokenStream {
                     .arg(Arg::with_name(#name).takes_value(true).required(true).help(#desc))
                 }
             };
+        });
+
+    item_impl
+        .items
+        .iter()
+        .map(|item| {
+            if let ImplItem::Method(method) = item {
+                Some(method)
+            } else {
+                None
+            }
+        })
+        .filter(Option::is_some)
+        .for_each(|item| {
+            let item = item.unwrap();
+            let about = extract_about(&item.attrs);
+            println!("{:?}", item);
         });
 
     let mut matchy = quote!();
