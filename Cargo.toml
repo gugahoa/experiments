@@ -1,0 +1,13 @@
+[package]
+name = "experiments"
+version = "0.1.0"
+authors = ["Gustavo Aguiar <gugahoa@gmail.com>"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "0.14", features = ["extra-traits", "full", "fold", "visit", "visit-mut"] }
+quote = "0.6"
+proc-macro2 = { version = "0.4", features = ["nightly"] }
+clap = "2.32"
