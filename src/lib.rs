@@ -245,6 +245,31 @@ pub fn experiment(args: TokenStream, input: TokenStream) -> TokenStream {
         .for_each(|item| {
             let item = item.unwrap();
             let about = extract_about(&item.attrs);
+            let subcommand = &item.sig.ident;
+            let arguments = quote!();
+
+            item.sig
+                .decl
+                .inputs
+                .iter()
+                .map(|input| {
+                    if let syn::FnArg::Captured(arg) = input {
+                        Some(arg)
+                    } else {
+                        input
+                            .span()
+                            .unstable()
+                            .error("Thunder does not support this function argument")
+                            .emit();
+                        None
+                    }
+                })
+                .filter(Option::is_some)
+                .for_each(|input| {
+                    let input = input.unwrap();
+                    println!("input.ty = {}", extract_inner_type(&input.ty));
+                });
+
             println!("{:?}", item);
         });
 
