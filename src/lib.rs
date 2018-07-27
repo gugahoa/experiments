@@ -163,6 +163,7 @@ pub fn experiment(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut init_data_struct = quote!();
     let mut data_struct = quote!();
     let mut global_matcher = quote!();
+    let mut matches = Vec::new();
 
     let impl_name_str = name_from_type_path(impl_name);
     let about = extract_about(&item_impl.attrs);
@@ -246,7 +247,8 @@ pub fn experiment(args: TokenStream, input: TokenStream) -> TokenStream {
             let item = item.unwrap();
             let about = extract_about(&item.attrs);
             let subcommand = &item.sig.ident;
-            let arguments = quote!();
+            let mut arguments = quote!();
+            let mut clap_args = quote!();
 
             item.sig
                 .decl
@@ -267,13 +269,68 @@ pub fn experiment(args: TokenStream, input: TokenStream) -> TokenStream {
                 .filter(Option::is_some)
                 .for_each(|input| {
                     let input = input.unwrap();
-                    println!("input.ty = {}", extract_inner_type(&input.ty));
-                });
+                    let inner_type = extract_inner_type(&input.ty);
+                    let option = name_from_type_path(&input.ty) == "Option";
 
-            println!("{:?}", item);
+                    let name = if let syn::Pat::Ident(ref pat) = input.pat {
+                        format!("{}", pat.ident)
+                    } else {
+                        input.pat.span()
+                            .unstable()
+                            .error("Name pattern not supported by thunder")
+                            .emit();
+                        unreachable!()
+                    };
+
+                    let arg = if option {
+                        clap_args = quote! {
+                            #clap_args.arg(Arg::with_name(#name))
+                        };
+
+                        quote! {
+                            m.value_of(#name).map(|m| m.parse::<#inner_type>()).map(Result::unwrap)
+                        }
+                    } else {
+                        clap_args = quote! {
+                            #clap_args.arg(Arg::with_name(#name).required(true))
+                        };
+
+                        quote! { m.value_of(#name).unwrap().parse::<#inner_type>().unwrap() }
+                    };
+
+                    arguments = quote! {
+                        #arguments
+                        #arg,
+                    };
+                });
+            let subcommand_string = format!("{}", subcommand);
+            app = quote! {
+                #app.subcommand(
+                    SubCommand::with_name(#subcommand_string).about(#about)#clap_args
+                )
+            };
+
+
+            matches.push(quote! {
+                (#subcommand_string, Some(m)) => #impl_name::#subcommand(#arguments),
+            });
         });
 
-    let mut matchy = quote!();
+    let mut matchy = matches.into_iter()
+        .fold(proc_macro2::TokenStream::new(), |acc, match_quote| {
+            (quote! {
+                #acc
+                #match_quote
+            }).into()
+        });
+
+    matchy = quote! {
+        match args.subcommand() {
+            #matchy
+            _ => { /* Ignoring errors */ }
+        }
+    };
+
     matchy = quote! {
         let mut global_match_states = __ThunderDataStaticStore::new_empty_store();
         #global_matcher
