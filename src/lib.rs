@@ -123,14 +123,14 @@ fn extract_inner_type(ty: &Type) -> proc_macro2::TokenStream {
         },
         Type::Reference(ref tr) => {
             if tr.mutability.is_some() {
-                ty.span()
+                tr.mutability.unwrap().span()
                     .unstable()
                     .error("Thunder does not support mutable arguments")
                     .emit()
             }
 
             if tr.lifetime.is_some() {
-                ty.span()
+                tr.lifetime.as_ref().unwrap().span()
                     .unstable()
                     .error("Thunder does not support lifetime on arguments")
                     .emit()
@@ -282,12 +282,13 @@ pub fn experiment(args: TokenStream, input: TokenStream) -> TokenStream {
                         unreachable!()
                     };
 
+                    let ty_span = input.ty.span();
                     let arg = if option {
                         clap_args = quote! {
                             #clap_args.arg(Arg::with_name(#name))
                         };
 
-                        quote! {
+                        quote_spanned! {ty_span=>
                             m.value_of(#name).map(|m| m.parse::<#inner_type>()).map(Result::unwrap)
                         }
                     } else {
@@ -295,7 +296,9 @@ pub fn experiment(args: TokenStream, input: TokenStream) -> TokenStream {
                             #clap_args.arg(Arg::with_name(#name).required(true))
                         };
 
-                        quote! { m.value_of(#name).unwrap().parse::<#inner_type>().unwrap() }
+                        quote_spanned! {ty_span=>
+                            m.value_of(#name).unwrap().parse::<#inner_type>().unwrap()
+                        }
                     };
 
                     arguments = quote! {
